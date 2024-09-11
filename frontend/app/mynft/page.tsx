@@ -3,12 +3,17 @@ import { ethers, isError } from "ethers";
 import { useContext, useEffect, useRef, useState } from "react";
 // import artifact from '../../abi/MyERC721.sol/MyERC721.json';
 import { Web3SignerContext } from "@/context/web3.context";
-import { Alert, Avatar, Button, Card, Container, Group, SimpleGrid, Stack, Text, TextInput, Title, Image, Badge } from "@mantine/core";
+import { Alert, Avatar, Button, Card, Container, Group, SimpleGrid, Stack, Text, TextInput, Title, Image, Badge, Modal } from "@mantine/core";
 import { IconCubePlus } from "@tabler/icons-react";
 import { MyERC721, MyERC721__factory } from "@/types";
+import { useDisclosure } from "@mantine/hooks";
+import { ethers as ethersV5 } from "ethersV5";
+import { Seaport } from "@opensea/seaport-js";
+import { ItemType } from "@opensea/seaport-js/lib/constants";
+import { CreateOrderInput } from "@opensea/seaport-js/lib/types";
 
 // デプロイしたMyERC721 Contractのアドレスを入力
-const contractAddress = '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0';
+const contractAddress = '0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e';
 // NOTICE:各自アドレスが異なるので、確認・変更してください！【5.3節リスト08を参照】
 
 type NFT = {
@@ -106,6 +111,105 @@ export default function MyNFT() {
     fetchMyNFTs();
   }, [myERC721Contract, signer]);
 
+  // NFT売り注文作成
+
+  // Seaport Contractのアドレスを入力
+  const seaportAddress = "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82";
+  // NOTICE:各自アドレスが異なる可能性があります。deploy-local.tsスクリプトの出力を参考に変更してください【5.5節リスト36参照】
+
+  // Seaportのインスタンスを保持するState
+  const [mySeaport, setMySeaport] = useState<Seaport | null>(null);
+
+  // Seaportのインスタンスを作成して保持
+  useEffect(() => {
+    // Seaportインスタンスの初期化
+    const setupSeaport = async () => {
+      if (signer) {
+        // NOTE: seaport-jsはethers V6をサポートしていないため、V5のprovider/signerを作成
+        const { ethereum } = window as any;
+        const ethersV5Provider = new ethersV5.providers.Web3Provider(ethereum);
+        const ethersV5Signer = await ethersV5Provider.getSigner();
+        // ローカルにデプロイしたSeaport Contractのアドレスを指定
+        const lSeaport = new Seaport(ethersV5Signer, {
+          overrides: {
+            contractAddress: seaportAddress,
+          }
+        });
+        setMySeaport(lSeaport);
+      }
+    }
+    setupSeaport();
+  }, [signer]);
+
+  // 売り注文作成モーダルの表示コントロール
+  const [opened, { open, close }] = useDisclosure(false);
+  // NFT売却における価格データを保持する
+  const refSellOrder = useRef<HTMLInputElement>(null);
+  // 売り注文作成中のローディング
+  const [loadingSellOrder, setLoadingSellOrder] = useState(false);
+  // 売りに出すNFTのtokenIdを保持する
+  const [sellTargetTokenId, setSellTargetTokenId] = useState<string | null>(null);
+
+  // モーダルオープン
+  const openModal = (tokenId: string) => {
+    // 売却対象のNFTのtokenIdを保持しておく
+    setSellTargetTokenId(tokenId);
+    open();
+  }
+
+  // NFT売り注文作成処理
+  const createSellOrder = async () => {
+    try {
+      setLoadingSellOrder(true);
+      // フォームに入力した価格を取得
+      const price = refSellOrder.current!.value;
+      // 売り注文作成のための入力データを作成
+      const firstStandardCreateOrderInput = {
+        offer: [
+          {
+            itemType: ItemType.ERC721,
+            token: contractAddress,
+            identifier: sellTargetTokenId
+          }
+        ],  // 上記はMyERC721を売りに出していることを示している
+        consideration: [
+          {
+            amount: ethers.parseUnits(price, 'ether').toString(),
+            recipient: await signer?.getAddress(),
+            token: ethers.ZeroAddress // its mean native token.
+          }
+          // 上記は売りに出したNFTの売価と受取人を指定している
+        ],
+        // 下記のように手数料やロイヤリティを指定することもできる
+        // fees: [{ recipient: signer._address, basisPoints: 500 }]
+      } as CreateOrderInput;
+      // 売り注文を作成する
+      const orderUseCase = await mySeaport!.createOrder(
+        firstStandardCreateOrderInput
+      );
+      // executeAllActionsの返り値で指定されるorderは、NFT売却者が(offerer)が署名した売り注文となっている
+      const order = await orderUseCase.executeAllActions();
+      console.log(order); // For debugging
+
+      // 作成した売り注文APIを実行する
+      fetch('/api/order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(order)
+      });
+
+      // 成功した場合はアラートを表示する
+      setShowAlert(true);
+      setAlertMessage(`NFT (${sellTargetTokenId}) is now for sale`);
+    } finally {
+      setLoadingSellOrder(false);
+      setSellTargetTokenId(null);
+      close();
+    }
+  };
+
   return (
     <div>
       <Title order={1} style={{ paddingBottom: 12 }}>
@@ -167,10 +271,29 @@ export default function MyNFT() {
               <Text size="sm" c="dimmed">
                 {nft.description}
               </Text>
+              <Button
+                variant='light'
+                color='blue'
+                fullWidth
+                mt='md'
+                radius='md'
+                onClick={() => {openModal(nft.tokenId.toString())}}
+              >
+                Sell this NFT
+              </Button>
             </Card>
           ))
         }
       </SimpleGrid>
+      <Modal opened={opened} onClose={close} title="Sell your NFT">
+        <Stack>
+          <TextInput
+            ref={refSellOrder}
+            label='Price (ether)'
+            placeholder='10' />
+          <Button loading={loadingSellOrder} onClick={createSellOrder}>Create sell order</Button>
+        </Stack>
+      </Modal>
     </div>
   );
 }

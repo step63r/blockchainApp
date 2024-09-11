@@ -3,7 +3,8 @@ import {
 } from "@mantine/core";
 import {
   IconHome2,
-  IconCards
+  IconCards,
+  IconShoppingCartBolt
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -22,6 +23,12 @@ export const NavbarLinks = () => {
       color: "green",
       label: "My NFT",
       path: "/mynft"
+    },
+    {
+      icon: <IconShoppingCartBolt />,
+      color: "green",
+      label: "Buy NFT",
+      path: "/order"
     }
   ];
   const [active, setActive] = useState(0);
