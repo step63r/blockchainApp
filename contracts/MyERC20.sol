@@ -19,7 +19,7 @@ contract MyERC20 is ERC20, Ownable, ERC20Permit, ERC20Votes, AccessControl {
     // トークンの名前を単位を返す
     constructor() ERC20("MyERC20", "ME2") ERC20Permit("MyERC20") {
         // トークンを作成者に1000000渡す
-        _mint(msg.sender, 10000000);
+        _mint(msg.sender, 1000000);
         Ownable(msg.sender);
         _grantRole(MINTER_ROLE, msg.sender);
     }
