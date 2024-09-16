@@ -93,7 +93,7 @@ export default function MyGovernor() {
 
     try {
       const myERC20Interface = types.MyERC20__factory.createInterface();
-      const calldata = myERC20Interface.encodeFunctionData("mint", ["0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", BigInt("1000000")]);
+      const calldata = myERC20Interface.encodeFunctionData("mint", ["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", BigInt("1000000")]);
       const target = erc20ContractAddress;
       const value = BigInt('0');
 
@@ -102,13 +102,16 @@ export default function MyGovernor() {
           [target], [value], [calldata], proposalTopic
         );
 
+        console.log('tx', tx);
+
         if (tx) {
           const receipt = await tx.wait();
+          console.log('receipt', receipt);
           if (receipt && receipt.logs && receipt.logs.length > 0) {
             // transaction logsから、ProposalCreatedのイベント名を抽出して、ProposalIdを取得する
             const log = receipt.logs.find(log => log.fragment.name === 'ProposalCreated');
             const { proposalId } = log.args;
-            console.log(proposalId);
+            console.log('proposalId', proposalId);
 
             // proposalIdを取得できたらProposals一覧に追加する
             if (proposalId) {
@@ -319,7 +322,7 @@ function ProposalCard({ proposal, myGovernorContract }) {
         <Container py={8}>
           <Alert
             variant="light"
-            color={alertMessage.includes("失敗") ? "red" : "teal"}
+            color={alertMessage.includes("fail") ? "red" : "teal"}
             title={alertMessage}
             withCloseButton
             onClose={() => setAlertMessage('')}>
